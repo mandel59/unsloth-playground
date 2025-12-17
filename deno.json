@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "@mandel59/mojidata": "npm:@mandel59/mojidata@1.6.2"
+  }
+}

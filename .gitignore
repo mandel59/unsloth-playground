@@ -1,0 +1,22 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+__marimo__
+unsloth_compiled_cache
+outputs
+adapters
+lora_model
+*_lora
+mlruns
+
+*.db
+*.zip
+*.ttf
