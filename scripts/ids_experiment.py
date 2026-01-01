@@ -499,7 +499,15 @@ def train_model(args: argparse.Namespace) -> None:
     mlflow.set_experiment(args.experiment_name)
 
     dataset_path = Path(args.dataset_dir) / f"{args.split}.jsonl"
-    records = read_jsonl(dataset_path)
+    train_records = read_jsonl(dataset_path)
+    eval_dataset = None
+    eval_path = None
+    if args.evaluation_strategy != "no":
+        eval_path = Path(args.dataset_dir) / f"{args.eval_split}.jsonl"
+        eval_records = read_jsonl(eval_path)
+        if not eval_records:
+            raise ValueError(f"Eval split is empty: {eval_path}")
+        eval_dataset = IDSMessageDataset(eval_records, args.instruction)
 
     with mlflow.start_run(run_name=args.run_name):
         mlflow.log_params(
@@ -525,6 +533,16 @@ def train_model(args: argparse.Namespace) -> None:
                 "cfg_finetune_mlp_modules": args.finetune_mlp_modules,
                 "cfg_max_length": args.max_length,
                 "cfg_curriculum": args.curriculum,
+                "cfg_eval_split": args.eval_split,
+                "cfg_evaluation_strategy": args.evaluation_strategy,
+                "cfg_eval_steps": args.eval_steps,
+                "cfg_save_strategy": args.save_strategy,
+                "cfg_save_steps": args.save_steps,
+                "cfg_save_total_limit": args.save_total_limit,
+                "cfg_load_best_model_at_end": args.load_best_model_at_end,
+                "cfg_metric_for_best_model": args.metric_for_best_model,
+                "cfg_greater_is_better": args.greater_is_better,
+                "cfg_resume_from_checkpoint": args.resume_from_checkpoint,
             }
         )
 
@@ -550,16 +568,33 @@ def train_model(args: argparse.Namespace) -> None:
         )
 
         FastVisionModel.for_training(model)
-        output_dir = Path(args.output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
+        base_output_dir = Path(args.output_dir)
+        base_output_dir.mkdir(parents=True, exist_ok=True)
+
+        load_best_model = args.load_best_model_at_end
+        if args.evaluation_strategy == "no" or args.save_strategy == "no":
+            load_best_model = False
 
         def run_stage(stage_name: str, stage_records: list[dict]) -> None:
             dataset = IDSMessageDataset(stage_records, args.instruction)
+            stage_output_dir = base_output_dir
+            if args.curriculum:
+                stage_output_dir = base_output_dir / stage_name
+                stage_output_dir.mkdir(parents=True, exist_ok=True)
+            resume_path = None
+            if args.resume_from_checkpoint:
+                resume_candidate = Path(args.resume_from_checkpoint)
+                if args.curriculum:
+                    if stage_output_dir in resume_candidate.parents:
+                        resume_path = str(resume_candidate)
+                else:
+                    resume_path = str(resume_candidate)
             trainer = SFTTrainer(
                 model=model,
                 tokenizer=tokenizer,
                 data_collator=UnslothVisionDataCollator(model, tokenizer),
                 train_dataset=dataset,
+                eval_dataset=eval_dataset,
                 args=SFTConfig(
                     per_device_train_batch_size=args.per_device_train_batch_size,
                     gradient_accumulation_steps=args.gradient_accumulation_steps,
@@ -571,29 +606,37 @@ def train_model(args: argparse.Namespace) -> None:
                     weight_decay=args.weight_decay,
                     lr_scheduler_type=args.lr_scheduler_type,
                     seed=args.seed,
-                    output_dir=str(output_dir),
+                    output_dir=str(stage_output_dir),
                     report_to=args.report_to,
                     remove_unused_columns=False,
                     dataset_text_field="",
                     dataset_kwargs={"skip_prepare_dataset": True},
                     max_length=args.max_length,
+                    evaluation_strategy=args.evaluation_strategy,
+                    eval_steps=args.eval_steps,
+                    save_strategy=args.save_strategy,
+                    save_steps=args.save_steps,
+                    save_total_limit=args.save_total_limit,
+                    load_best_model_at_end=load_best_model,
+                    metric_for_best_model=args.metric_for_best_model,
+                    greater_is_better=args.greater_is_better,
                 ),
             )
-            metrics = trainer.train().metrics
+            metrics = trainer.train(resume_from_checkpoint=resume_path).metrics
             metrics = {f"{stage_name}/{k}": v for k, v in metrics.items()}
             mlflow.log_metrics(metrics)
 
         if args.curriculum:
-            for stage_name, stage_records in build_curriculum(records):
+            for stage_name, stage_records in build_curriculum(train_records):
                 with mlflow.start_run(run_name=stage_name, nested=True):
                     mlflow.log_param("stage_name", stage_name)
                     mlflow.log_param("stage_samples", len(stage_records))
                     run_stage(stage_name, stage_records)
         else:
-            run_stage("train", records)
+            run_stage("train", train_records)
 
-        model.save_pretrained(output_dir / args.adapter_name)
-        tokenizer.save_pretrained(output_dir / args.adapter_name)
+        model.save_pretrained(base_output_dir / args.adapter_name)
+        tokenizer.save_pretrained(base_output_dir / args.adapter_name)
 
 
 def levenshtein(a: str, b: str) -> int:
@@ -741,6 +784,30 @@ def build_parser() -> argparse.ArgumentParser:
     train = subparsers.add_parser("train", help="Train IDS LoRA adapter.")
     train.add_argument("--dataset-dir", default="outputs/ids_dataset")
     train.add_argument("--split", default="train")
+    train.add_argument("--resume-from-checkpoint", default=None)
+    train.add_argument("--eval-split", default="val")
+    train.add_argument(
+        "--evaluation-strategy",
+        default="epoch",
+        choices=["no", "steps", "epoch"],
+    )
+    train.add_argument("--eval-steps", type=int, default=50)
+    train.add_argument(
+        "--save-strategy",
+        default="epoch",
+        choices=["no", "steps", "epoch"],
+    )
+    train.add_argument("--save-steps", type=int, default=50)
+    train.add_argument("--save-total-limit", type=int, default=3)
+    train.add_argument(
+        "--load-best-model-at-end",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    train.add_argument("--metric-for-best-model", default="eval_loss")
+    train.add_argument(
+        "--greater-is-better", action=argparse.BooleanOptionalAction, default=False
+    )
     train.add_argument(
         "--model-name",
         default="unsloth/Qwen3-VL-2B-Instruct-unsloth-bnb-4bit",
