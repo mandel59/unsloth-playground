@@ -612,7 +612,7 @@ def train_model(args: argparse.Namespace) -> None:
                     dataset_text_field="",
                     dataset_kwargs={"skip_prepare_dataset": True},
                     max_length=args.max_length,
-                    evaluation_strategy=args.evaluation_strategy,
+                    eval_strategy=args.evaluation_strategy,
                     eval_steps=args.eval_steps,
                     save_strategy=args.save_strategy,
                     save_steps=args.save_steps,
@@ -691,6 +691,8 @@ def evaluate_model(args: argparse.Namespace) -> None:
                 "dataset_path": str(dataset_path),
                 "split": args.split,
                 "max_samples": args.max_samples,
+                "predictions_path": args.predictions_path,
+                "errors_only": args.errors_only,
             }
         )
 
@@ -707,45 +709,74 @@ def evaluate_model(args: argparse.Namespace) -> None:
         total_edit = 0
         grammar_ok = 0
 
-        for record in records:
-            from PIL import Image
+        predictions_file = None
+        if args.predictions_path:
+            predictions_path = Path(args.predictions_path)
+            predictions_path.parent.mkdir(parents=True, exist_ok=True)
+            predictions_file = predictions_path.open("w", encoding="utf-8")
 
-            image = Image.open(record["image_path"]).convert("RGB")
-            prompt = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": args.instruction},
-                        {"type": "image", "image": image},
-                    ],
-                }
-            ]
-            input_text = tokenizer.apply_chat_template(
-                prompt, add_generation_prompt=True
-            )
-            inputs = tokenizer(
-                image,
-                input_text,
-                add_special_tokens=False,
-                return_tensors="pt",
-            ).to("cuda")
-            output = model.generate(
-                **inputs,
-                max_new_tokens=args.max_new_tokens,
-                use_cache=True,
-                do_sample=False,
-            )
-            input_len = inputs["input_ids"].shape[-1]
-            decoded = tokenizer.decode(
-                output[0][input_len:], skip_special_tokens=True
-            )
-            pred_ids = parse_prediction(decoded, record["char"])
-            total += 1
-            if pred_ids == record["ids"]:
-                correct += 1
-            total_edit += levenshtein(pred_ids, record["ids"])
-            if is_valid_ids(pred_ids):
-                grammar_ok += 1
+        try:
+            for record in records:
+                from PIL import Image
+
+                image = Image.open(record["image_path"]).convert("RGB")
+                prompt = [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": args.instruction},
+                            {"type": "image", "image": image},
+                        ],
+                    }
+                ]
+                input_text = tokenizer.apply_chat_template(
+                    prompt, add_generation_prompt=True
+                )
+                inputs = tokenizer(
+                    image,
+                    input_text,
+                    add_special_tokens=False,
+                    return_tensors="pt",
+                ).to("cuda")
+                output = model.generate(
+                    **inputs,
+                    max_new_tokens=args.max_new_tokens,
+                    use_cache=True,
+                    do_sample=False,
+                )
+                input_len = inputs["input_ids"].shape[-1]
+                decoded = tokenizer.decode(
+                    output[0][input_len:], skip_special_tokens=True
+                )
+                pred_ids = parse_prediction(decoded, record["char"])
+                total += 1
+                if pred_ids == record["ids"]:
+                    correct += 1
+                edit_distance = levenshtein(pred_ids, record["ids"])
+                total_edit += edit_distance
+                pred_grammar_ok = is_valid_ids(pred_ids)
+                if pred_grammar_ok:
+                    grammar_ok += 1
+
+                if predictions_file:
+                    if not args.errors_only or pred_ids != record["ids"]:
+                        predictions_file.write(
+                            json.dumps(
+                                {
+                                    "char": record["char"],
+                                    "ids": record["ids"],
+                                    "pred_ids": pred_ids,
+                                    "edit_distance": edit_distance,
+                                    "grammar_ok": pred_grammar_ok,
+                                    "image_path": record["image_path"],
+                                },
+                                ensure_ascii=False,
+                            )
+                            + "\n"
+                        )
+        finally:
+            if predictions_file:
+                predictions_file.close()
 
         metrics = {
             "exact_match": correct / total if total else 0.0,
@@ -864,6 +895,10 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--instruction", default="Break down the Hanzi of the image into Ideographic Description Sequence (IDS).")
     evaluate.add_argument("--max-samples", type=int, default=0)
     evaluate.add_argument("--max-new-tokens", type=int, default=128)
+    evaluate.add_argument("--predictions-path", default=None)
+    evaluate.add_argument(
+        "--errors-only", action=argparse.BooleanOptionalAction, default=False
+    )
     evaluate.set_defaults(func=evaluate_model)
 
     return parser
