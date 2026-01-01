@@ -454,7 +454,7 @@ class IDSMessageDataset:
             },
             {
                 "role": "assistant",
-                "content": [{"type": "text", "text": f"{record['char']}={record['ids']}"}],
+                "content": [{"type": "text", "text": record["ids"]}],
             },
         ]
         return {"messages": messages}
@@ -662,6 +662,8 @@ def parse_prediction(text: str, expected_char: str) -> str:
         return text.split("=", 1)[1].strip()
     if text.startswith(expected_char):
         return text[len(expected_char) :].lstrip(" =")
+    if text.lower().startswith("ids"):
+        return text[3:].lstrip(" :=")
     return text
 
 
@@ -848,7 +850,10 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--experiment-name", default="ids-lora-qwen3-vl")
     train.add_argument("--run-name", default=None)
     train.add_argument("--mlflow-uri", default=None)
-    train.add_argument("--instruction", default="Break down the Hanzi of the image into Ideographic Description Sequence (IDS).")
+    train.add_argument(
+        "--instruction",
+        default="Break down the Hanzi of the image into Ideographic Description Sequence (IDS). Output only the IDS.",
+    )
     train.add_argument("--curriculum", action="store_true")
     train.add_argument("--per-device-train-batch-size", type=int, default=32)
     train.add_argument("--gradient-accumulation-steps", type=int, default=32)
@@ -892,7 +897,10 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--experiment-name", default="ids-lora-qwen3-vl")
     evaluate.add_argument("--run-name", default=None)
     evaluate.add_argument("--mlflow-uri", default=None)
-    evaluate.add_argument("--instruction", default="Break down the Hanzi of the image into Ideographic Description Sequence (IDS).")
+    evaluate.add_argument(
+        "--instruction",
+        default="Break down the Hanzi of the image into Ideographic Description Sequence (IDS). Output only the IDS.",
+    )
     evaluate.add_argument("--max-samples", type=int, default=0)
     evaluate.add_argument("--max-new-tokens", type=int, default=128)
     evaluate.add_argument("--predictions-path", default=None)
