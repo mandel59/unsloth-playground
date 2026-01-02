@@ -15,6 +15,8 @@ Ollama via a merged GGUF model.
   Qwen3-VL GGUF while preserving vision tensors.
 - `docs/ollama_model_conversion.md`: step-by-step instructions to create an
   Ollama model from the merged GGUF.
+- `docs/ignored_artifacts.md`: how to fetch gitignored assets needed to run
+  the scripts.
 
 ## Typical workflow
 

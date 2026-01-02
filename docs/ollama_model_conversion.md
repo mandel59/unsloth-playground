@@ -11,9 +11,49 @@ text weights into the base GGUF while preserving the vision tensors.
 
 ## Files produced by this flow
 
+- Text-only GGUF (from merged HF): `outputs/merged-qwen3-vl-2b-ids-<tag>.gguf`
 - Combined GGUF: `outputs/merged-qwen3-vl-2b-ids-combined-fixed.gguf`
 - Modelfile: `outputs/merged-qwen3-vl-2b-ids-combined-fixed.Modelfile`
 - Ollama model name: `qwen3vl-ids-r32a32-combined-fixed`
+
+## Step 0: Build the text-only GGUF
+
+First merge the LoRA adapter into the base HF model, then convert to a
+text-only GGUF.
+
+### 0a) Merge adapter into HF weights
+
+```
+from pathlib import Path
+import torch
+from peft import PeftModel
+from transformers import AutoProcessor, AutoTokenizer, Qwen3VLForConditionalGeneration
+
+base_dir = Path("PATH_TO_QWEN3_VL_2B_INSTRUCT_SNAPSHOT")
+adapter_dir = Path("PATH_TO_ADAPTER_CHECKPOINT")
+out_dir = Path("outputs/merged-qwen3-vl-2b-ids-<tag>-hf")
+
+model = Qwen3VLForConditionalGeneration.from_pretrained(
+    base_dir, torch_dtype=torch.float16, device_map="cpu", low_cpu_mem_usage=True
+)
+model = PeftModel.from_pretrained(model, adapter_dir)
+model = model.merge_and_unload()
+model.save_pretrained(out_dir, safe_serialization=True)
+
+tokenizer = AutoTokenizer.from_pretrained(adapter_dir, trust_remote_code=True)
+tokenizer.save_pretrained(out_dir)
+processor = AutoProcessor.from_pretrained(adapter_dir, trust_remote_code=True)
+processor.save_pretrained(out_dir)
+```
+
+### 0b) Convert merged HF to GGUF
+
+```
+.venv\Scripts\python.exe tools\llama.cpp\convert_hf_to_gguf.py ^
+  outputs\merged-qwen3-vl-2b-ids-<tag>-hf ^
+  --outfile outputs\merged-qwen3-vl-2b-ids-<tag>.gguf ^
+  --outtype f16
+```
 
 ## Step 1: Merge GGUFs (keep vision tensors)
 
