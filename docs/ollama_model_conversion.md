@@ -40,9 +40,9 @@ FROM C:/Users/mande/ws/unsloth-playground/outputs/merged-qwen3-vl-2b-ids-combine
 TEMPLATE {{ .Prompt }}
 RENDERER qwen3-vl-instruct
 PARSER qwen3-vl-instruct
-PARAMETER temperature 1
-PARAMETER top_k 20
-PARAMETER top_p 0.95
+PARAMETER temperature 0
+PARAMETER num_predict 96
+PARAMETER stop "\n"
 ```
 
 Save as: `outputs/merged-qwen3-vl-2b-ids-combined-fixed.Modelfile`
