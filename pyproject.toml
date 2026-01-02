@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "fonttools>=4.61.1",
+    "huggingface-hub>=0.36.0",
     "ipython[black]>=9.8.0",
     "marimo>=0.18.4",
     "mlflow>=3.8.1",
