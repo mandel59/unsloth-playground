@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "bitsandbytes>=0.45.0; sys_platform == 'linux'",
     "fonttools>=4.61.1",
     "huggingface-hub>=0.36.0",
     "ipython[black]>=9.8.0",
