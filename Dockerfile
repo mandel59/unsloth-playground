@@ -11,6 +11,7 @@ RUN --mount=type=cache,target=/var/cache/apt \
         curl \
         git \
         build-essential \
+        unzip \
         libglib2.0-0 \
         libgl1 \
         libjpeg-turbo8 \
