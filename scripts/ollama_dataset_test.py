@@ -7,6 +7,8 @@ import json
 import os
 import random
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 from urllib.error import HTTPError, URLError
@@ -95,6 +97,32 @@ def run_image_test(host: str, model: str, prompt: str, image_path: Path) -> str:
     return response.get("response", "").strip()
 
 
+@dataclass(frozen=True)
+class SampleResult:
+    image_path: Path
+    expected: str
+    predicted: str
+    ok: bool
+
+
+def evaluate_sample(
+    host: str,
+    model: str,
+    prompt: str,
+    image_path: Path,
+    expected: str,
+    expected_char: str | None,
+) -> SampleResult:
+    raw = run_image_test(host, model, prompt, image_path)
+    pred = parse_prediction(raw, expected_char)
+    return SampleResult(
+        image_path=image_path,
+        expected=expected,
+        predicted=pred,
+        ok=pred == expected,
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Evaluate Ollama IDS model on outputs/ids_dataset/test.jsonl."
@@ -107,6 +135,7 @@ def main() -> int:
     parser.add_argument("--prompt", default=DEFAULT_PROMPT)
     parser.add_argument("--max-samples", type=int, default=0)
     parser.add_argument("--seed", type=int, default=3407)
+    parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--errors-only", action="store_true")
     args = parser.parse_args()
@@ -118,35 +147,70 @@ def main() -> int:
         print(f"no records in {dataset_file}", file=sys.stderr)
         return 1
 
-    total = 0
-    correct = 0
     missing_images = 0
+    results: list[SampleResult] = []
 
     try:
+        items: list[tuple[Path, str, str | None]] = []
         for record in iter_samples(records, args.max_samples, args.seed):
             image_path = resolve_image_path(record.get("image_path"), dataset_file)
             if not image_path:
                 missing_images += 1
                 continue
-            expected = record.get("ids", "")
-            expected_char = record.get("char")
-            raw = run_image_test(host, args.model, args.prompt, image_path)
-            pred = parse_prediction(raw, expected_char)
-
-            total += 1
-            ok = pred == expected
-            if ok:
-                correct += 1
-
-            if args.verbose or (args.errors_only and not ok):
-                status = "ok" if ok else "ng"
-                print(
-                    f"{status}: {image_path} expected={expected} predicted={pred}"
+            items.append(
+                (
+                    image_path,
+                    record.get("ids", ""),
+                    record.get("char"),
                 )
+            )
+
+        if args.workers <= 1:
+            for image_path, expected, expected_char in items:
+                result = evaluate_sample(
+                    host,
+                    args.model,
+                    args.prompt,
+                    image_path,
+                    expected,
+                    expected_char,
+                )
+                results.append(result)
+                if args.verbose or (args.errors_only and not result.ok):
+                    status = "ok" if result.ok else "ng"
+                    print(
+                        f"{status}: {result.image_path} expected={result.expected} "
+                        f"predicted={result.predicted}"
+                    )
+        else:
+            with ThreadPoolExecutor(max_workers=args.workers) as executor:
+                futures = [
+                    executor.submit(
+                        evaluate_sample,
+                        host,
+                        args.model,
+                        args.prompt,
+                        image_path,
+                        expected,
+                        expected_char,
+                    )
+                    for image_path, expected, expected_char in items
+                ]
+                for future in as_completed(futures):
+                    result = future.result()
+                    results.append(result)
+                    if args.verbose or (args.errors_only and not result.ok):
+                        status = "ok" if result.ok else "ng"
+                        print(
+                            f"{status}: {result.image_path} expected={result.expected} "
+                            f"predicted={result.predicted}"
+                        )
     except (HTTPError, URLError) as exc:
         print(f"ollama request failed: {exc}", file=sys.stderr)
         return 1
 
+    total = len(results)
+    correct = sum(1 for result in results if result.ok)
     accuracy = (correct / total) if total else 0.0
     print(
         f"summary: total={total} correct={correct} "
