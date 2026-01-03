@@ -11,10 +11,10 @@ text weights into the base GGUF while preserving the vision tensors.
 
 ## Files produced by this flow
 
-- Text-only GGUF (from merged HF): `outputs/merged-qwen3-vl-2b-ids-<tag>.gguf`
-- Combined GGUF: `outputs/merged-qwen3-vl-2b-ids-combined-fixed.gguf`
-- Modelfile: `outputs/merged-qwen3-vl-2b-ids-combined-fixed.Modelfile`
-- Ollama model name: `qwen3vl-ids-r32a32-combined-fixed`
+- Text-only GGUF (from merged HF): `outputs/merged-qwen3-vl-2b-ids-text.gguf`
+- Combined GGUF: `outputs/merged-qwen3-vl-2b-ids-combined.gguf`
+- Modelfile: `outputs/merged-qwen3-vl-2b-ids-combined.Modelfile`
+- Ollama model name: `qwen3vl-ids`
 
 ## Step 0: Build the text-only GGUF
 
@@ -31,7 +31,7 @@ from transformers import AutoProcessor, AutoTokenizer, Qwen3VLForConditionalGene
 
 base_dir = Path("PATH_TO_QWEN3_VL_2B_INSTRUCT_SNAPSHOT")
 adapter_dir = Path("PATH_TO_ADAPTER_CHECKPOINT")
-out_dir = Path("outputs/merged-qwen3-vl-2b-ids-<tag>-hf")
+out_dir = Path("outputs/merged-qwen3-vl-2b-ids-text-hf")
 
 model = Qwen3VLForConditionalGeneration.from_pretrained(
     base_dir, torch_dtype=torch.float16, device_map="cpu", low_cpu_mem_usage=True
@@ -50,8 +50,8 @@ processor.save_pretrained(out_dir)
 
 ```
 .venv\Scripts\python.exe tools\llama.cpp\convert_hf_to_gguf.py ^
-  outputs\merged-qwen3-vl-2b-ids-<tag>-hf ^
-  --outfile outputs\merged-qwen3-vl-2b-ids-<tag>.gguf ^
+  outputs\merged-qwen3-vl-2b-ids-text-hf ^
+  --outfile outputs\merged-qwen3-vl-2b-ids-text.gguf ^
   --outtype f16
 ```
 
@@ -65,7 +65,7 @@ tensors while keeping all vision tensors and base metadata.
 .venv\Scripts\python.exe scripts\merge_gguf_qwen3vl.py ^
   --base-gguf C:\Users\mande\.ollama\models\blobs\sha256-aafed9e48b157ae913cee994e0d9ac927af51e256feafbd923bf2852e8856d00 ^
   --text-gguf outputs\merged-qwen3-vl-2b-ids-full.gguf ^
-  --output-gguf outputs\merged-qwen3-vl-2b-ids-combined-fixed.gguf
+  --output-gguf outputs\merged-qwen3-vl-2b-ids-combined.gguf
 ```
 
 Notes:
@@ -76,7 +76,7 @@ Notes:
 ## Step 2: Create the Modelfile
 
 ```
-FROM C:/Users/mande/ws/unsloth-playground/outputs/merged-qwen3-vl-2b-ids-combined-fixed.gguf
+FROM C:/Users/mande/ws/unsloth-playground/outputs/merged-qwen3-vl-2b-ids-combined.gguf
 TEMPLATE {{ .Prompt }}
 RENDERER qwen3-vl-instruct
 PARSER qwen3-vl-instruct
@@ -85,24 +85,24 @@ PARAMETER num_predict 96
 PARAMETER stop "\n"
 ```
 
-Save as: `outputs/merged-qwen3-vl-2b-ids-combined-fixed.Modelfile`
+Save as: `outputs/merged-qwen3-vl-2b-ids-combined.Modelfile`
 
 ## Step 3: Register with Ollama
 
 ```
-ollama create qwen3vl-ids-r32a32-combined-fixed -f outputs\merged-qwen3-vl-2b-ids-combined-fixed.Modelfile
+ollama create qwen3vl-ids -f outputs\merged-qwen3-vl-2b-ids-combined.Modelfile
 ```
 
 ## Step 4: Smoke test
 
 ```
-ollama run qwen3vl-ids-r32a32-combined-fixed "hello"
+ollama run qwen3vl-ids "hello"
 ```
 
 ## Step 5: Visual IDS inference example
 
 ```
-ollama run qwen3vl-ids-r32a32-combined-fixed --image path\to\sample.png ^
+ollama run qwen3vl-ids --image path\to\sample.png ^
   "Break down the Hanzi of the image into Ideographic Description Sequence (IDS). Output only the IDS."
 ```
 
