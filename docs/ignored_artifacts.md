@@ -48,5 +48,5 @@ git clone https://github.com/ggerganov/llama.cpp tools/llama.cpp
   `python scripts/ids_experiment.py train`
 - `outputs/merged-*.gguf` and `outputs/*.Modelfile` are created by the merge and
   Ollama steps
-- `mlruns` is created by MLflow during training/evaluation
+- `mlflow.db` is created by MLflow during training/evaluation
 - `unsloth_compiled_cache` is created automatically by Unsloth
