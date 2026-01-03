@@ -27,6 +27,11 @@ deno run --allow-write=moji.db --unstable-raw-imports scripts/get_mojidata.ts
   - `fonts/Jigmo3.ttf`
 - The Jigmo font bundle can be downloaded from:
   `https://kamichikoichi.github.io/jigmo/Jigmo-20250912.zip`
+- Download + install helper:
+
+```
+bash scripts/get_jigmo_fonts.sh
+```
 - Archives can be stored anywhere; this repo uses `downloads/` by convention
   (it is gitignored).
 - If you use different fonts, pass `--fonts` to the `prepare` command.
