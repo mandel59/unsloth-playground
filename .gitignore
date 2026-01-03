@@ -16,6 +16,7 @@ adapters
 lora_model
 *_lora
 mlruns
+downloads
 
 *.db
 *.zip
