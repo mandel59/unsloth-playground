@@ -85,23 +85,58 @@ installing `runpodctl` in the pod.
   --output-dir outputs/ids_dataset
 ```
 
-## 7) Train
+## 7) Download the resume checkpoint from Hugging Face
+
+The repo `mandel59/ids-lora-qwen3vl-2b-checkpoint` stores the checkpoint files
+at the repo root (optimizer and trainer state included).
+
+```
+python - <<'PY'
+from huggingface_hub import snapshot_download
+
+snapshot_download(
+    repo_id="mandel59/ids-lora-qwen3vl-2b-checkpoint",
+    local_dir="outputs/ids-lora-qwen3vl-2b-checkpoint",
+)
+PY
+```
+
+This creates `outputs/ids-lora-qwen3vl-2b-checkpoint/` with the checkpoint files.
+
+## 8) Train (resume from the checkpoint)
 
 ```
 /workspace/unsloth-playground/.venv/bin/python scripts/ids_experiment.py train \
   --dataset-dir outputs/ids_dataset \
-  --output-dir outputs/IDS-LoRA-Qwen3-VL-2B \
-  --adapter-name IDS-LoRA-Qwen3-VL-2B
+  --num-train-epochs 9 \
+  --r 32 \
+  --lora-alpha 32 \
+  --max-length 192 \
+  --run-name ids-lora-r32a32-runpod \
+  --output-dir outputs/IDS-LoRA-Qwen3-VL-2B-r32a32-runpod \
+  --resume-from-checkpoint outputs/ids-lora-qwen3vl-2b-checkpoint
 ```
 
 For a quick smoke test, reduce data and epochs (see
 `docs/ignored_artifacts.md` for the dataset flow).
 
-## 8) Collect outputs and shut down
+## 9) Collect outputs and shut down
 
 - Keep outputs under `/runpod/unsloth-playground/outputs` to persist on the
   volume.
-- Download results via SSH or by attaching the volume to another pod.
+- Download results via SSH or by attaching the volume to another pod. Example
+  (SSH host/port/user are shown in the Runpod UI or `runpodctl get pod`):
+
+```
+# On the pod
+cd /runpod/unsloth-playground
+tar -czf /runpod/IDS-LoRA-Qwen3-VL-2B-r32a32-runpod.tgz \
+  outputs/IDS-LoRA-Qwen3-VL-2B-r32a32-runpod
+
+# On your local machine
+scp -P <SSH_PORT> <USER>@<HOST>:/runpod/IDS-LoRA-Qwen3-VL-2B-r32a32-runpod.tgz .
+tar -xzf IDS-LoRA-Qwen3-VL-2B-r32a32-runpod.tgz
+```
 - Stop or remove the pod:
 
 ```
