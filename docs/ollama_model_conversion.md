@@ -99,11 +99,24 @@ ollama create qwen3vl-ids-r32a32-combined-fixed -f outputs\merged-qwen3-vl-2b-id
 ollama run qwen3vl-ids-r32a32-combined-fixed "hello"
 ```
 
-## Step 5: Visual IDS inference example
+## Step 5: Visual IDS inference example (HTTP API)
 
-```
-ollama run qwen3vl-ids-r32a32-combined-fixed --image path\to\sample.png ^
-  "Break down the Hanzi of the image into Ideographic Description Sequence (IDS). Output only the IDS."
+Ollama's CLI does not accept `--image`. Use the HTTP API with base64-encoded
+images.
+
+```powershell
+$imgPath = "path\\to\\sample.png"
+$bytes = [IO.File]::ReadAllBytes($imgPath)
+$b64 = [Convert]::ToBase64String($bytes)
+$body = @{
+  model = "qwen3vl-ids-r32a32-combined-fixed"
+  prompt = "Break down the Hanzi of the image into Ideographic Description Sequence (IDS). Output only the IDS."
+  images = @($b64)
+  stream = $false
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri http://127.0.0.1:11434/api/generate `
+  -Method Post -Body $body -ContentType "application/json"
 ```
 
 ## Troubleshooting
