@@ -20,4 +20,6 @@ downloads
 
 *.db
 *.zip
+*.tgz
+*.tar.gz
 *.ttf
